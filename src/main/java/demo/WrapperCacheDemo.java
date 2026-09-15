@@ -11,7 +11,7 @@ public class WrapperCacheDemo {
     private static final String PASS = "secret";
 
     private static final String CACHED_QUERY =
-        "/* CACHE_PARAM(ttl=300s) */ SELECT id, name, price FROM products WHERE category = 'electronics'";
+        "/* CACHE_PARAM(ttl=3600) */ SELECT id, name, price FROM products WHERE category = 'electronics'";
 
     private static final String UNCACHED_QUERY =
         "SELECT stock FROM products WHERE id = 1";
@@ -50,11 +50,11 @@ public class WrapperCacheDemo {
         System.out.println("\n[USE CASE 1] Product catalog — first page load (cache is empty)");
         System.out.println("  Query : " + CACHED_QUERY);
 
-        long start = System.currentTimeMillis();
+        long start = System.nanoTime();
         try (ResultSet rs = conn.createStatement().executeQuery(CACHED_QUERY)) {
             int rows = printRows(rs);
-            long ms = System.currentTimeMillis() - start;
-            System.out.println("  Result: " + rows + " rows  |  Time: " + ms + "ms");
+            double ms = (System.nanoTime() - start)/1_000_000.0;
+            System.out.printf("  Result: %d rows  |  Time: %.1fms%n", rows, ms);
             System.out.println("  Cache : MISS → MySQL queried → result written to Valkey (TTL 60s)");
         }
     }
@@ -65,24 +65,37 @@ public class WrapperCacheDemo {
     static void useCaseTwo(Connection conn) throws SQLException {
         System.out.println("\n[USE CASE 2] Product catalog — 10 users hit the same page (cache warm)");
         System.out.println("  Query : " + CACHED_QUERY);
-
-        long total = 0;
-        for (int i = 1; i <= 10; i++) {
-            long start = System.currentTimeMillis();
-            try (ResultSet rs = conn.createStatement().executeQuery(CACHED_QUERY)) {
-                while (rs.next()) {
-                    int rows = printRows(rs);
-                    long ms = System.currentTimeMillis() - start;
-                    System.out.println("  Result: " + rows + " rows  |  Time: " + ms + "ms");
-                } // consume rows
-                total += System.currentTimeMillis() - start;
-            }
         
+        // warm-up JVM
+        for (int i = 0; i < 50; i++) {
+            try (Statement stmt = conn.createStatement();
+                ResultSet rs = stmt.executeQuery(CACHED_QUERY)) {
+                while (rs.next()) { /* consume */ }
+            }
         }
 
+        long total = 0;
+        long startTen = System.nanoTime();
+        for (int i = 1; i <= 10; i++) {
+            long start = System.nanoTime();
+            
+            // Time ONLY the statement execution and result iteration
+            try (Statement stmt = conn.createStatement();
+                ResultSet rs = stmt.executeQuery(CACHED_QUERY)) {
+                while (rs.next()) {
+                    rs.getInt("id");
+                    rs.getString("name");
+                    rs.getDouble("price");
+                }
+            }
+            
+            double ms = (System.nanoTime() - start) / 1_000_000.0;
+            System.out.printf("  Execution #%d: %.2fms%n", i, ms);
+        }
+        double totalMs = (System.nanoTime() - startTen) / 1_000_000.0;
         
         System.out.println("  Cache : HIT × 10 → MySQL never touched");
-        System.out.println("  Total : " + total + "ms for 10 reads from Valkey");
+        System.out.printf("  Total : %.1fms%n for 10 reads from Valkey", totalMs);
     }
 
     // -------------------------------------------------------------------
@@ -92,13 +105,13 @@ public class WrapperCacheDemo {
         System.out.println("\n[USE CASE 3] Real-time stock check — no cache hint, always hits MySQL");
         System.out.println("  Query : " + UNCACHED_QUERY);
 
-        long start = System.currentTimeMillis();
+        long start = System.nanoTime();
         try (ResultSet rs = conn.createStatement().executeQuery(UNCACHED_QUERY)) {
             if (rs.next()) {
                 System.out.println("  Stock : " + rs.getInt("stock") + " units");
             }
-            long ms = System.currentTimeMillis() - start;
-            System.out.println("  Time  : " + ms + "ms");
+            double ms = (System.nanoTime() - start)/1_000_000.0;
+            System.out.printf("  Time: %.1fms%n", ms);
             System.out.println("  Cache : bypassed — no CACHE_PARAM hint present");
         }
 
