@@ -11,7 +11,7 @@ public class WrapperCacheDemo {
     private static final String PASS = "secret";
 
     private static final String CACHED_QUERY =
-        "/* CACHE_PARAM(ttl=3600) */ SELECT id, name, price FROM products WHERE category = 'electronics'";
+        "/* CACHE_PARAM(ttl=3600s) */ SELECT id, name, price FROM products WHERE category = 'electronics'";
 
     private static final String UNCACHED_QUERY =
         "SELECT stock FROM products WHERE id = 1";
