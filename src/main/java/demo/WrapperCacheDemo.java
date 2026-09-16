@@ -47,7 +47,9 @@ public class WrapperCacheDemo {
     // Use Case 1: product catalog, cold start — expected CACHE MISS
     // -------------------------------------------------------------------
     static void useCaseOne(Connection conn) throws SQLException {
-        System.out.println("\n[USE CASE 1] Product catalog — first page load (cache is empty)");
+        System.out.println("\n=================================================");
+        System.out.println("[USE CASE 1] Product catalog — first page load");
+        System.out.println("=================================================");
         System.out.println("  Query : " + CACHED_QUERY);
 
         long start = System.nanoTime();
@@ -63,7 +65,9 @@ public class WrapperCacheDemo {
     // Use Case 2: same query x10 — expected CACHE HIT every time
     // -------------------------------------------------------------------
     static void useCaseTwo(Connection conn) throws SQLException {
-        System.out.println("\n[USE CASE 2] Product catalog — 10 users hit the same page (cache warm)");
+        System.out.println("\n=================================================");
+        System.out.println("[USE CASE 2] Product catalog — 10 users (cache warm)");
+        System.out.println("=================================================");
         System.out.println("  Query : " + CACHED_QUERY);
         
         // warm-up JVM
@@ -95,14 +99,16 @@ public class WrapperCacheDemo {
         double totalMs = (System.nanoTime() - startTen) / 1_000_000.0;
         
         System.out.println("  Cache : HIT × 10 → MySQL never touched");
-        System.out.printf("  Total : %.1fms%n for 10 reads from Valkey", totalMs);
+        System.out.printf("  Total : %.1fms for 10 reads from Valkey%n", totalMs);
     }
 
     // -------------------------------------------------------------------
     // Use Case 3: real-time stock check — no hint, always hits MySQL
     // -------------------------------------------------------------------
     static void useCaseThree(Connection conn) throws SQLException {
-        System.out.println("\n[USE CASE 3] Real-time stock check — no cache hint, always hits MySQL");
+        System.out.println("\n=================================================");
+        System.out.println("[USE CASE 3] Real-time stock check");
+        System.out.println("=================================================");
         System.out.println("  Query : " + UNCACHED_QUERY);
 
         long start = System.nanoTime();
@@ -159,11 +165,21 @@ public class WrapperCacheDemo {
                         ('Wireless Mouse',   29.99, 'electronics', 150),
                         ('USB-C Hub',        49.99, 'electronics', 88)
                 """);
-                System.out.println("\n  Seeded 3 products into MySQL.");
-            } else {
-                System.out.println("\n  Products table already has data, skipping seed.");
             }
         }
+
+        System.out.println("\n--- Products in MySQL ---");
+        System.out.printf("  %-4s  %-22s  %8s  %5s%n", "ID", "Name", "Price", "Stock");
+        System.out.println("  " + "-".repeat(46));
+        try (ResultSet rs = conn.createStatement().executeQuery(
+                "SELECT id, name, price, stock FROM products ORDER BY id")) {
+            while (rs.next()) {
+                System.out.printf("  %-4d  %-22s  $%7.2f  %5d%n",
+                    rs.getInt("id"), rs.getString("name"),
+                    rs.getDouble("price"), rs.getInt("stock"));
+            }
+        }
+        System.out.println("  " + "-".repeat(46));
     }
 
     static int printRows(ResultSet rs) throws SQLException {
