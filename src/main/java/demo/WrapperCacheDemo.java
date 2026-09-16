@@ -57,7 +57,7 @@ public class WrapperCacheDemo {
             int rows = printRows(rs);
             double ms = (System.nanoTime() - start)/1_000_000.0;
             System.out.printf("  Result: %d rows  |  Time: %.1fms%n", rows, ms);
-            System.out.println("  Cache : MISS → MySQL queried → result written to Valkey (TTL 60s)");
+            System.out.println("  Cache : MISS → MySQL queried → result written to Valkey (TTL 3600s)");
         }
     }
 
