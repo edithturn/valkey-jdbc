@@ -70,36 +70,35 @@ public class WrapperCacheDemo {
         System.out.println("=================================================");
         System.out.println("  Query : " + CACHED_QUERY);
         
-        // warm-up JVM
-        for (int i = 0; i < 50; i++) {
-            try (Statement stmt = conn.createStatement();
-                ResultSet rs = stmt.executeQuery(CACHED_QUERY)) {
-                while (rs.next()) { /* consume */ }
-            }
-        }
-
-        long total = 0;
-        long startTen = System.nanoTime();
-        for (int i = 1; i <= 10; i++) {
-            long start = System.nanoTime();
-            
-            // Time ONLY the statement execution and result iteration
-            try (Statement stmt = conn.createStatement();
-                ResultSet rs = stmt.executeQuery(CACHED_QUERY)) {
-                while (rs.next()) {
-                    rs.getInt("id");
-                    rs.getString("name");
-                    rs.getDouble("price");
+        double[] times = new double[10];
+        try (PreparedStatement ps = conn.prepareStatement(CACHED_QUERY)) {
+            // warm-up on the same PS that will be measured
+            for (int i = 0; i < 50; i++) {
+                try (ResultSet rs = ps.executeQuery()) {
+                    while (rs.next()) { /* consume */ }
                 }
             }
-            
-            double ms = (System.nanoTime() - start) / 1_000_000.0;
-            System.out.printf("  Execution #%d: %.2fms%n", i, ms);
+
+            long startTen = System.nanoTime();
+            for (int i = 0; i < 10; i++) {
+                long start = System.nanoTime();
+                try (ResultSet rs = ps.executeQuery()) {
+                    while (rs.next()) {
+                        rs.getInt("id");
+                        rs.getString("name");
+                        rs.getDouble("price");
+                    }
+                }
+                times[i] = (System.nanoTime() - start) / 1_000_000.0;
+            }
+            double totalMs = (System.nanoTime() - startTen) / 1_000_000.0;
+
+            for (int i = 0; i < times.length; i++) {
+                System.out.printf("  Execution #%d: %.2fms%n", i + 1, times[i]);
+            }
+            System.out.println("  Cache : HIT × 10 → MySQL never touched");
+            System.out.printf("  Total : %.1fms for 10 reads from Valkey%n", totalMs);
         }
-        double totalMs = (System.nanoTime() - startTen) / 1_000_000.0;
-        
-        System.out.println("  Cache : HIT × 10 → MySQL never touched");
-        System.out.printf("  Total : %.1fms for 10 reads from Valkey%n", totalMs);
     }
 
     // -------------------------------------------------------------------
