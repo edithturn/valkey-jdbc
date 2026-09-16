@@ -23,9 +23,9 @@ AWS Advanced JDBC Wrapper   ← jdbc:aws-wrapper:mysql://localhost:3306/testdb
 
 The only two things that change in your code:
 1. URL prefix: `jdbc:aws-wrapper:mysql://` instead of `jdbc:mysql://`
-2. SQL hint on queries you want cached: `/* CACHE_PARAM(ttl=60s) */`
+2. SQL hint on queries you want cached: `/* CACHE_PARAM(ttl=3600) */`
 
-Everything else — `Connection`, `PreparedStatement`, `ResultSet` — is standard JDBC, unchanged.
+Everything else, `Connection`, `PreparedStatement`, `ResultSet` — is standard JDBC, unchanged.
 
 ## Prerequisites
 
@@ -33,7 +33,7 @@ Everything else — `Connection`, `PreparedStatement`, `ResultSet` — is standa
 - Java 11+
 - Maven 3.6+
 
-## Step 1 — Start the infrastructure
+## Step 1: Start the infrastructure
 
 ```bash
 docker compose up -d
@@ -44,13 +44,13 @@ This starts:
 - `demo-mysql` on port 3306 (database: `testdb`, root password: `secret`)
 - `demo-valkey` on port 6379
 
-## Step 2 — Build
+## Step 2: Build
 
 ```bash
 mvn package -q
 ```
 
-## Step 3 — Run
+## Step 3: Run
 
 ```bash
 mvn exec:java -q
@@ -58,49 +58,76 @@ mvn exec:java -q
 
 ## What you will see
 
-### Driver chain (printed at startup)
 ```
-Driver : software.amazon.jdbc.Driver
-Wraps  : com.mysql.cj.jdbc.Driver
-Cache  : localhost:6379 (Valkey)
-```
+=================================================
+  AWS Advanced JDBC Wrapper — Valkey Cache Demo  
+=================================================
 
-### Use Case 1 — Product catalog, cold start
-```
+--- Driver chain ---
+  Wrapper : software.amazon.jdbc.Driver (v4.4.0)
+  Plugin  : remoteQueryCache
+  Cache   : localhost:6379 (Valkey)
+  Driver  : com.mysql.cj.jdbc.Driver
+  DB      : MySQL 8.0.46
+
+--- Products in MySQL ---
+  ID    Name                       Price  Stock
+  ----------------------------------------------
+  1     Laptop Pro 15           $1299.99     42
+  2     Wireless Mouse          $  29.99    150
+  3     USB-C Hub               $  49.99     88
+  ----------------------------------------------
+
+=================================================
 [USE CASE 1] Product catalog — first page load
-  Query : /* CACHE_PARAM(ttl=60s) */ SELECT * FROM products WHERE category = 'electronics'
-  Valkey: MISS  →  MySQL queried  →  3 rows returned
-  Result written to Valkey (TTL 60s, async)
-  Time  : ~15ms
-```
+=================================================
+  Query : /* CACHE_PARAM(ttl=3600) */ SELECT id, name, price FROM products WHERE category = 'electronics'
+  ---
+  id=1   Laptop Pro 15         $1299.99
+  id=2   Wireless Mouse        $  29.99
+  id=3   USB-C Hub             $  49.99
+  ---
+  Result: 3 rows  |  Time: 3.0ms
+  Cache : MISS → MySQL queried → result written to Valkey (TTL 3600s)
 
-### Use Case 2 — Same page, 10 more users arrive
-```
-[USE CASE 2] Product catalog — 10 repeated reads (cache warm)
-  Query : /* CACHE_PARAM(ttl=60s) */ SELECT * FROM products WHERE category = 'electronics'
-  Valkey: HIT × 10  →  MySQL not touched
-  Total : ~20ms   (vs ~150ms if all 10 hit MySQL)
-```
+=================================================
+[USE CASE 2] Product catalog — 10 users (cache warm)
+=================================================
+  Query : /* CACHE_PARAM(ttl=3600) */ SELECT id, name, price FROM products WHERE category = 'electronics'
+  Execution #1: 0.74ms
+  Execution #2: 0.73ms
+  Execution #3: 0.97ms
+  Execution #4: 1.14ms
+  Execution #5: 1.06ms
+  Execution #6: 0.98ms
+  Execution #7: 0.87ms
+  Execution #8: 0.91ms
+  Execution #9: 0.91ms
+  Execution #10: 0.93ms
+  Cache : HIT × 10 → MySQL never touched
+  Total : 9.2ms for 10 reads from Valkey
 
-Round 2 is the key moment: 10 reads, zero database calls.
-
-### Use Case 3 — Real-time stock check, must not be cached
-```
-[USE CASE 3] Stock level check — cache bypassed (no hint)
+=================================================
+[USE CASE 3] Real-time stock check
+=================================================
   Query : SELECT stock FROM products WHERE id = 1
-  Valkey: bypassed  →  MySQL queried every time
-  Time  : ~15ms per call
+  Stock : 42 units
+  Time: 5.6ms
+  Cache : bypassed — no CACHE_PARAM hint present
+
+  WHY: stock levels change constantly — serving stale data from
+  cache would show wrong inventory. Never hint real-time queries.
 ```
 
-This shows when NOT to use caching: real-time or write-sensitive data should never carry the hint.
+Use Case 2 is the key moment: 10 reads, ~0.9ms each on average, zero database calls. Use Case 3 shows when NOT to cache: real-time or write-sensitive data should never carry the hint.
 
 ## How caching is opted in
 
 Opt-in per query via a SQL comment hint:
 
 ```sql
--- cached for 60 seconds
-/* CACHE_PARAM(ttl=60s) */ SELECT * FROM products WHERE category = 'electronics'
+-- cached for 3600 seconds (1 hour)
+/* CACHE_PARAM(ttl=3600) */ SELECT id, name, price FROM products WHERE category = 'electronics'
 
 -- never cached (no hint) — always goes to MySQL
 SELECT stock FROM products WHERE id = 1
