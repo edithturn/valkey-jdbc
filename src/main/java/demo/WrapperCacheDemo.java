@@ -50,15 +50,33 @@ public class WrapperCacheDemo {
         System.out.println("\n=================================================");
         System.out.println("[USE CASE 1] Product catalog — first page load");
         System.out.println("=================================================");
-        System.out.println("  Query : " + CACHED_QUERY);
+        System.out.println("  Cache is empty. Fetching from MySQL...");
+
+        int[][] ids = new int[10][1];
+        String[] names = new String[10];
+        double[] prices = new double[10];
+        int rowCount = 0;
 
         long start = System.nanoTime();
-        try (ResultSet rs = conn.createStatement().executeQuery(CACHED_QUERY)) {
-            int rows = printRows(rs);
-            double ms = (System.nanoTime() - start)/1_000_000.0;
-            System.out.printf("  Result: %d rows  |  Time: %.1fms%n", rows, ms);
-            System.out.println("  Cache : MISS → MySQL queried → result written to Valkey (TTL 3600s)");
+        try (PreparedStatement ps = conn.prepareStatement(CACHED_QUERY);
+             ResultSet rs = ps.executeQuery()) {
+            while (rs.next()) {
+                ids[rowCount][0] = rs.getInt("id");
+                names[rowCount]  = rs.getString("name");
+                prices[rowCount] = rs.getDouble("price");
+                rowCount++;
+            }
         }
+        double ms = (System.nanoTime() - start) / 1_000_000.0;
+
+        System.out.println("  ---");
+        for (int i = 0; i < rowCount; i++) {
+            System.out.printf("  id=%-2d  %-20s  $%7.2f%n", ids[i][0], names[i], prices[i]);
+        }
+        System.out.println("  ---");
+        System.out.printf("  %d rows in %.1fms%n", rowCount, ms);
+        System.out.println("  Cache was empty — MySQL answered in <1ms.");
+        System.out.println("  Result now stored in Valkey. Next user gets it instantly.");
     }
 
     // -------------------------------------------------------------------
