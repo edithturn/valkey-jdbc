@@ -10,8 +10,13 @@ public class WrapperCacheDemo {
     private static final String USER = "root";
     private static final String PASS = "secret";
 
-    private static final String CACHED_QUERY =
+    private static final String CACHED_QUERY_DISPLAY =
         "/* CACHE_PARAM(ttl=3600s) */ SELECT id, name, price FROM products WHERE category = 'electronics'";
+
+    private static final String CACHED_QUERY =
+        "/* CACHE_PARAM(ttl=3600s) */ SELECT p.id, p.name, p.price" +
+        " FROM products p JOIN (SELECT SLEEP(0.5 + RAND() * 2.5) AS delay) d ON 1=1" +
+        " WHERE p.category = 'electronics'";
 
     private static final String UNCACHED_QUERY =
         "SELECT stock FROM products WHERE id = 1";
@@ -44,15 +49,15 @@ public class WrapperCacheDemo {
     }
 
     // -------------------------------------------------------------------
-    // Use Case 1: product catalog, cold start — expected CACHE MISS
+    // Cache miss: product catalog, cold start
     // -------------------------------------------------------------------
     static void useCaseOne(Connection conn) throws SQLException {
         System.out.println("\n=================================================");
-        System.out.println("[USE CASE 1] Product catalog — first page load");
+        System.out.println("[CACHE MISS] Product catalog — first page load");
         System.out.println("=================================================");
         System.out.println("  Cache is empty. Fetching from MySQL...");
 
-        int[][] ids = new int[10][1];
+        int[] ids = new int[10];
         String[] names = new String[10];
         double[] prices = new double[10];
         int rowCount = 0;
@@ -61,7 +66,7 @@ public class WrapperCacheDemo {
         try (PreparedStatement ps = conn.prepareStatement(CACHED_QUERY);
              ResultSet rs = ps.executeQuery()) {
             while (rs.next()) {
-                ids[rowCount][0] = rs.getInt("id");
+                ids[rowCount] = rs.getInt("id");
                 names[rowCount]  = rs.getString("name");
                 prices[rowCount] = rs.getDouble("price");
                 rowCount++;
@@ -71,22 +76,21 @@ public class WrapperCacheDemo {
 
         System.out.println("  ---");
         for (int i = 0; i < rowCount; i++) {
-            System.out.printf("  id=%-2d  %-20s  $%7.2f%n", ids[i][0], names[i], prices[i]);
+            System.out.printf("  id=%-2d  %-20s  $%7.2f%n", ids[i], names[i], prices[i]);
         }
         System.out.println("  ---");
         System.out.printf("  %d rows in %.1fms%n", rowCount, ms);
-        System.out.println("  Cache was empty — MySQL answered in <1ms.");
-        System.out.println("  Result now stored in Valkey. Next user gets it instantly.");
+        System.out.printf("  Cache was empty — MySQL took %.1fms. Result now stored in Valkey.%n", ms);
     }
 
     // -------------------------------------------------------------------
-    // Use Case 2: same query x10 — expected CACHE HIT every time
+    // Cache hit: same query x10
     // -------------------------------------------------------------------
     static void useCaseTwo(Connection conn) throws SQLException {
         System.out.println("\n=================================================");
-        System.out.println("[USE CASE 2] Product catalog — 10 users (cache warm)");
+        System.out.println("[CACHE HIT]  Product catalog — 10 users (cache warm)");
         System.out.println("=================================================");
-        System.out.println("  Query : " + CACHED_QUERY);
+        System.out.println("  Query : " + CACHED_QUERY_DISPLAY);
         
         double[] times = new double[10];
         try (PreparedStatement ps = conn.prepareStatement(CACHED_QUERY)) {
@@ -112,7 +116,7 @@ public class WrapperCacheDemo {
             double totalMs = (System.nanoTime() - startTen) / 1_000_000.0;
 
             for (int i = 0; i < times.length; i++) {
-                System.out.printf("  Execution #%d: %.2fms%n", i + 1, times[i]);
+                System.out.printf("  Execution #%d: %.1fms%n", i + 1, times[i]);
             }
             System.out.println("  Cache : HIT × 10 → MySQL never touched");
             System.out.printf("  Total : %.1fms for 10 reads from Valkey%n", totalMs);
@@ -120,12 +124,14 @@ public class WrapperCacheDemo {
     }
 
     // -------------------------------------------------------------------
-    // Use Case 3: real-time stock check — no hint, always hits MySQL
+    // When not to cache: real-time stock check — no hint, always hits MySQL
     // -------------------------------------------------------------------
     static void useCaseThree(Connection conn) throws SQLException {
         System.out.println("\n=================================================");
-        System.out.println("[USE CASE 3] Real-time stock check");
+        System.out.println("[WHEN NOT TO CACHE] Real-time stock check");
         System.out.println("=================================================");
+        System.out.println("  Stock changes with every order — stale data means wrong inventory.");
+        System.out.println("  No CACHE_PARAM hint, no cache. The wrapper goes straight to MySQL.");
         System.out.println("  Query : " + UNCACHED_QUERY);
 
         long start = System.nanoTime();
@@ -135,11 +141,8 @@ public class WrapperCacheDemo {
             }
             double ms = (System.nanoTime() - start)/1_000_000.0;
             System.out.printf("  Time: %.1fms%n", ms);
-            System.out.println("  Cache : bypassed — no CACHE_PARAM hint present");
+            System.out.println("  Cache : NONE — no CACHE_PARAM hint");
         }
-
-        System.out.println("\n  WHY: stock levels change constantly — serving stale data from");
-        System.out.println("  cache would show wrong inventory. Never hint real-time queries.");
     }
 
     // -------------------------------------------------------------------
@@ -197,17 +200,5 @@ public class WrapperCacheDemo {
             }
         }
         System.out.println("  " + "-".repeat(46));
-    }
-
-    static int printRows(ResultSet rs) throws SQLException {
-        int count = 0;
-        System.out.println("  ---");
-        while (rs.next()) {
-            System.out.printf("  id=%-2d  %-20s  $%7.2f%n",
-                rs.getInt("id"), rs.getString("name"), rs.getDouble("price"));
-            count++;
-        }
-        System.out.println("  ---");
-        return count;
     }
 }
