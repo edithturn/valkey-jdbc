@@ -60,7 +60,7 @@ mvn exec:java -q
 
 ```
 =================================================
-  AWS Advanced JDBC Wrapper — Valkey Cache Demo  
+  AWS Advanced JDBC Wrapper, Valkey Cache Demo  
 =================================================
 
 --- Driver chain ---
@@ -71,7 +71,7 @@ mvn exec:java -q
   DB      : MySQL 8.0.46
 
 --- Products in MySQL ---
-  ID    Name                       Price  Stock
+  ID    Name                      Price    Stock
   ----------------------------------------------
   1     Laptop Pro 15           $1299.99     42
   2     Wireless Mouse          $  29.99    150
@@ -79,21 +79,21 @@ mvn exec:java -q
   ----------------------------------------------
 
 =================================================
-[USE CASE 1] Product catalog — first page load
+[CACHE MISS] Product catalog, first page load
 =================================================
-  Query : /* CACHE_PARAM(ttl=3600) */ SELECT id, name, price FROM products WHERE category = 'electronics'
+  Cache is empty. Fetching from MySQL...
   ---
   id=1   Laptop Pro 15         $1299.99
   id=2   Wireless Mouse        $  29.99
   id=3   USB-C Hub             $  49.99
   ---
-  Result: 3 rows  |  Time: 3.0ms
-  Cache : MISS → MySQL queried → result written to Valkey (TTL 3600s)
+  3 rows in 1523.4ms
+  Cache was empty — MySQL took 1523.4ms. Result now stored in Valkey.
 
 =================================================
-[USE CASE 2] Product catalog — 10 users (cache warm)
+[CACHE HIT]  Product catalog, 10 users (cache warm)
 =================================================
-  Query : /* CACHE_PARAM(ttl=3600) */ SELECT id, name, price FROM products WHERE category = 'electronics'
+  Query : /* CACHE_PARAM(ttl=3600s) */ SELECT id, name, price FROM products WHERE category = 'electronics'
   Execution #1: 0.74ms
   Execution #2: 0.73ms
   Execution #3: 0.97ms
@@ -108,18 +108,17 @@ mvn exec:java -q
   Total : 9.2ms for 10 reads from Valkey
 
 =================================================
-[USE CASE 3] Real-time stock check
+[WHEN NOT TO CACHE] Real-time stock check
 =================================================
+  Stock changes with every order,  stale data means wrong inventory.
+  No CACHE_PARAM hint, no cache. The wrapper goes straight to MySQL.
   Query : SELECT stock FROM products WHERE id = 1
   Stock : 42 units
   Time: 5.6ms
-  Cache : bypassed — no CACHE_PARAM hint present
-
-  WHY: stock levels change constantly — serving stale data from
-  cache would show wrong inventory. Never hint real-time queries.
+  Cache : NONE — no CACHE_PARAM hint
 ```
 
-Use Case 2 is the key moment: 10 reads, ~0.9ms each on average, zero database calls. Use Case 3 shows when NOT to cache: real-time or write-sensitive data should never carry the hint.
+The CACHE HIT block is the key moment: 10 reads, ~0.9ms each on average, zero database calls — while the cold CACHE MISS query took over 1.5 seconds hitting MySQL. WHEN NOT TO CACHE shows when to skip the hint: real-time or write-sensitive data should never be cached.
 
 ## How caching is opted in
 

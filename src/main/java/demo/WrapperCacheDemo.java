@@ -53,7 +53,7 @@ public class WrapperCacheDemo {
     // -------------------------------------------------------------------
     static void useCaseOne(Connection conn) throws SQLException {
         System.out.println("\n=================================================");
-        System.out.println("[CACHE MISS] Product catalog — first page load");
+        System.out.println("[CACHE MISS] Product catalog, first page load");
         System.out.println("=================================================");
         System.out.println("  Cache is empty. Fetching from MySQL...");
 
@@ -80,7 +80,7 @@ public class WrapperCacheDemo {
         }
         System.out.println("  ---");
         System.out.printf("  %d rows in %.1fms%n", rowCount, ms);
-        System.out.printf("  Cache was empty — MySQL took %.1fms. Result now stored in Valkey.%n", ms);
+        System.out.printf("  Cache was empty, MySQL took %.1fms. Result now stored in Valkey.%n", ms);
     }
 
     // -------------------------------------------------------------------
@@ -88,7 +88,7 @@ public class WrapperCacheDemo {
     // -------------------------------------------------------------------
     static void useCaseTwo(Connection conn) throws SQLException {
         System.out.println("\n=================================================");
-        System.out.println("[CACHE HIT]  Product catalog — 10 users (cache warm)");
+        System.out.println("[CACHE HIT]  Product catalog, 10 users (cache warm)");
         System.out.println("=================================================");
         System.out.println("  Query : " + CACHED_QUERY_DISPLAY);
         
@@ -124,13 +124,13 @@ public class WrapperCacheDemo {
     }
 
     // -------------------------------------------------------------------
-    // When not to cache: real-time stock check — no hint, always hits MySQL
+    // When not to cache: real-time stock check, no hint, always hits MySQL
     // -------------------------------------------------------------------
     static void useCaseThree(Connection conn) throws SQLException {
         System.out.println("\n=================================================");
         System.out.println("[WHEN NOT TO CACHE] Real-time stock check");
         System.out.println("=================================================");
-        System.out.println("  Stock changes with every order — stale data means wrong inventory.");
+        System.out.println("  Stock changes with every order, stale data means wrong inventory.");
         System.out.println("  No CACHE_PARAM hint, no cache. The wrapper goes straight to MySQL.");
         System.out.println("  Query : " + UNCACHED_QUERY);
 
@@ -141,7 +141,7 @@ public class WrapperCacheDemo {
             }
             double ms = (System.nanoTime() - start)/1_000_000.0;
             System.out.printf("  Time: %.1fms%n", ms);
-            System.out.println("  Cache : NONE — no CACHE_PARAM hint");
+            System.out.println("  Cache : NONE, no CACHE_PARAM hint");
         }
     }
 
@@ -150,7 +150,7 @@ public class WrapperCacheDemo {
     // -------------------------------------------------------------------
     static void printHeader() {
         System.out.println("=================================================");
-        System.out.println("  AWS Advanced JDBC Wrapper — Valkey Cache Demo  ");
+        System.out.println("  AWS Advanced JDBC Wrapper, Valkey Cache Demo  ");
         System.out.println("=================================================");
     }
 
